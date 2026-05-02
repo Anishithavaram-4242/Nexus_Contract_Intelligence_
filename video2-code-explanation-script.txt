@@ -1,0 +1,855 @@
+VIDEO 2: CODE EXPLANATION SCRIPT
+Project: Nexus CLM
+Target Length: 15-20 minutes
+
+Intro
+
+Hi everyone, in this video I will explain the code of my Nexus CLM project.
+
+This is a full-stack Contract Lifecycle Management application. The frontend is built with React and Vite, the backend is built with Node.js and Express, and MongoDB is used as the database.
+
+I will explain the important files only, but I will cover the complete flow: frontend pages, backend APIs, database models, authentication, contract management, and user management.
+
+
+1. Project Structure
+
+The project has two main folders.
+
+backend contains the Express server, MongoDB models, routes, seed data, and environment configuration.
+
+lexis-react contains the React frontend, components, styling, and API calls.
+
+The main database is MongoDB, and it contains two main collections: users and contracts.
+
+
+2. Backend Entry Point: server.js
+
+First, I will explain backend/server.js.
+
+This is the main backend file. It imports Express, Mongoose, CORS, dotenv, routes, and the seed function.
+
+Code block:
+
+```js
+import express from 'express';
+import mongoose from 'mongoose';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import contractRoutes from './routes/contractRoutes.js';
+import userRoutes from './routes/userRoutes.js';
+import { seedDatabase } from './seedData.js';
+```
+
+Express creates the backend server. Mongoose connects to MongoDB. CORS allows the React frontend to call backend APIs. Dotenv loads environment variables from the .env file.
+
+The .env file contains the backend port and MongoDB URL.
+
+Code block:
+
+```js
+dotenv.config({ path: path.join(__dirname, '.env') });
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+```
+
+Then middleware is added.
+
+Code block:
+
+```js
+app.use(cors());
+app.use(express.json());
+```
+
+cors allows frontend-backend communication, and express.json allows the backend to read JSON request bodies.
+
+Then API routes are connected.
+
+Code block:
+
+```js
+app.use('/api/contracts', contractRoutes);
+app.use('/api/users', userRoutes);
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+```
+
+So contract APIs start with /api/contracts, user APIs start with /api/users, and uploaded files are served from /uploads.
+
+Finally, the backend connects to MongoDB and starts the server.
+
+Code block:
+
+```js
+mongoose.connect(process.env.MONGO_URI)
+  .then(async () => {
+    console.log('Connected to MongoDB');
+    await seedDatabase();
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
+  .catch((err) => console.log('Error connecting to MongoDB:', err.message));
+```
+
+This means when the server starts, it connects to MongoDB, seeds demo data if needed, and then listens on port 5000.
+
+
+3. User Model: models/User.js
+
+Next is backend/models/User.js.
+
+This file defines the structure of a user document in MongoDB.
+
+Code block:
+
+```js
+const UserSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  role: { type: String, enum: ['Admin', 'Manager', 'User'], default: 'User' },
+}, { timestamps: true });
+
+export default mongoose.model('User', UserSchema);
+```
+
+Each user has a name, email, password, and role.
+
+The role controls access in the frontend. Admin has full access, Manager has dashboard and team access, and User has limited access.
+
+timestamps automatically adds createdAt and updatedAt.
+
+
+4. Contract Model: models/Contract.js
+
+Next is backend/models/Contract.js.
+
+This file defines the contract document structure.
+
+A contract has multiple nested sections, so the file defines small schemas first: clauses, risks, documents, approval chain, timeline, and stages.
+
+Code block:
+
+```js
+const ClauseSchema = new mongoose.Schema({
+  num: String,
+  name: String,
+  status: { type: String, enum: ['Approved', 'Flagged', 'Review', 'Draft'] },
+  color: { type: String, enum: ['green', 'red', 'amber', 'gray'] }
+});
+```
+
+Clauses store individual contract clauses and their status.
+
+Code block:
+
+```js
+const RiskSchema = new mongoose.Schema({
+  title: String,
+  desc: String,
+  color: { type: String, enum: ['green', 'red', 'amber'] },
+  action: String
+});
+```
+
+Risks store alerts like missing clauses, overdue approvals, or legal issues.
+
+The main contract schema stores all contract data.
+
+Code block:
+
+```js
+const ContractSchema = new mongoose.Schema({
+  ref: { type: String, required: true, unique: true },
+  name: { type: String, required: true },
+  party: { type: String, required: true },
+  type: { type: String, required: true },
+  value: String,
+  stage: { type: String, required: true },
+  stageIndex: Number,
+  urgency: { type: String, enum: ['red', 'amber', 'green', 'blue', 'gray'] },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  clauses: [ClauseSchema],
+  risks: [RiskSchema],
+  documents: [DocumentSchema],
+  approvalChain: [ApprovalStepSchema],
+  timeline: [TimelineEntrySchema],
+  stages: [StageSchema]
+}, { timestamps: true });
+```
+
+The important field here is createdBy, because it connects a contract to the user who created it.
+
+The arrays store the full lifecycle information of the contract.
+
+
+5. Seed Data: seedData.js
+
+Next is backend/seedData.js.
+
+This file inserts demo data into MongoDB if the database is empty.
+
+It seeds both users and contracts.
+
+Code block:
+
+```js
+const mockUsers = [
+  { name: 'Arjun Kumar', email: 'admin@nexus.local', password: 'admin123', role: 'Admin' },
+  { name: 'Priya Sharma', email: 'manager@nexus.local', password: 'manager123', role: 'Manager' },
+  { name: 'Raj Kumar', email: 'user@nexus.local', password: 'user123', role: 'User' },
+];
+```
+
+These are demo login accounts.
+
+The main function is seedDatabase.
+
+Code block:
+
+```js
+export const seedDatabase = async () => {
+  const userCount = await User.countDocuments();
+  if (userCount === 0) {
+    await User.insertMany(mockUsers);
+  }
+
+  const contractCount = await Contract.countDocuments();
+  if (contractCount === 0) {
+    await Contract.insertMany(mockContracts);
+  }
+};
+```
+
+This function prevents duplicate records. It only inserts data when the collection is empty.
+
+
+6. User Routes: routes/userRoutes.js
+
+Next is backend/routes/userRoutes.js.
+
+This file handles user APIs.
+
+First, GET /api/users fetches all users.
+
+Code block:
+
+```js
+router.get('/', async (req, res) => {
+  const users = await User.find().sort({ createdAt: -1 });
+  res.json(users);
+});
+```
+
+This is used in the Admin Users page and Teams page.
+
+Signup creates a new user.
+
+Code block:
+
+```js
+router.post('/signup', async (req, res) => {
+  const existing = await User.findOne({ email: req.body.email });
+  if (existing) {
+    return res.status(400).json({ message: 'Email already in use' });
+  }
+
+  const count = await User.countDocuments();
+  const role = count === 0 ? 'Admin' : 'User';
+
+  const user = new User({ ...req.body, role });
+  const newUser = await user.save();
+  res.status(201).json(newUser);
+});
+```
+
+This checks for duplicate email, assigns a role, saves the user, and returns the new user.
+
+Login verifies email and password.
+
+Code block:
+
+```js
+router.post('/login', async (req, res) => {
+  const user = await User.findOne({ email: req.body.email });
+  if (!user) return res.status(404).json({ message: 'User not found' });
+
+  if (user.password !== req.body.password) {
+    return res.status(401).json({ message: 'Invalid credentials' });
+  }
+
+  res.json(user);
+});
+```
+
+Role update is done with PUT /api/users/:id.
+
+Code block:
+
+```js
+router.put('/:id', async (req, res) => {
+  const updatedUser = await User.findByIdAndUpdate(
+    req.params.id,
+    { role: req.body.role },
+    { new: true }
+  );
+  res.json(updatedUser);
+});
+```
+
+Delete removes a user.
+
+Code block:
+
+```js
+router.delete('/:id', async (req, res) => {
+  await User.findByIdAndDelete(req.params.id);
+  res.json({ message: 'User deleted' });
+});
+```
+
+
+7. Contract Routes: routes/contractRoutes.js
+
+Next is backend/routes/contractRoutes.js.
+
+This file handles all contract APIs.
+
+It also configures multer for file uploads.
+
+Code block:
+
+```js
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, 'uploads/'),
+  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`)
+});
+
+const upload = multer({ storage });
+```
+
+GET /api/contracts fetches contracts.
+
+Code block:
+
+```js
+router.get('/', async (req, res) => {
+  const { userId, userRole } = req.query;
+  let query = {};
+
+  if (userRole === 'User' && userId) {
+    query = { createdBy: userId };
+  }
+
+  const contracts = await Contract.find(query).sort({ createdAt: -1 });
+  res.json(contracts);
+});
+```
+
+This route supports role-based data. Admin and Manager can see all contracts, while User can see only their own contracts.
+
+GET /api/contracts/:id fetches one contract.
+
+Code block:
+
+```js
+router.get('/:id', async (req, res) => {
+  const contract = await Contract.findById(req.params.id);
+  if (!contract) return res.status(404).json({ message: 'Contract not found' });
+  res.json(contract);
+});
+```
+
+POST /api/contracts creates a new contract.
+
+Code block:
+
+```js
+router.post('/', async (req, res) => {
+  const contract = new Contract(req.body);
+  const newContract = await contract.save();
+  res.status(201).json(newContract);
+});
+```
+
+PUT /api/contracts/:id updates an existing contract.
+
+Code block:
+
+```js
+router.put('/:id', async (req, res) => {
+  const updatedContract = await Contract.findByIdAndUpdate(
+    req.params.id,
+    req.body,
+    { new: true, runValidators: true }
+  );
+  res.json(updatedContract);
+});
+```
+
+This update route is reused for approval, rejection, comments, risk resolution, editing, and document version updates.
+
+POST /api/contracts/upload uploads a document.
+
+Code block:
+
+```js
+router.post('/upload', upload.single('file'), (req, res) => {
+  const fileUrl = `http://localhost:5000/uploads/${req.file.filename}`;
+  res.json({
+    url: fileUrl,
+    name: req.file.originalname,
+    size: `${(req.file.size / 1024).toFixed(1)} KB`
+  });
+});
+```
+
+
+8. React Entry: main.jsx and App.jsx
+
+Now I will explain the frontend.
+
+main.jsx renders the React app.
+
+Code block:
+
+```jsx
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+```
+
+App.jsx is the main frontend controller.
+
+It stores the active page, selected contract ID, current user, and user role.
+
+Code block:
+
+```jsx
+const [activePage, setActivePage] = useState('home');
+const [contractId, setContractId] = useState(null);
+const [currentUser, setCurrentUser] = useState(() => {
+  const saved = localStorage.getItem('lexis_user');
+  return saved ? JSON.parse(saved) : null;
+});
+```
+
+The main function is handleNavigate.
+
+Code block:
+
+```jsx
+const handleNavigate = (page, data) => {
+  if (page === 'contract-detail') {
+    setActivePage('contract-detail');
+    setContractId(data);
+  } else {
+    setActivePage(page);
+    setContractId(null);
+  }
+  window.scrollTo(0, 0);
+};
+```
+
+App.jsx also protects routes. If the user is not logged in, protected pages show Login Required. If a normal User opens the dashboard, it shows Access Denied. Only Admin can open User Management.
+
+
+9. Navbar.jsx
+
+Navbar.jsx renders the top navigation.
+
+It receives currentUser and activePage as props.
+
+If no user is logged in, it shows Login.
+
+If a user is logged in, it shows menu links based on role.
+
+Admin can see Contracts, Dashboard, Teams, and Users.
+
+Manager can see Contracts, Dashboard, and Teams.
+
+User can mainly access Contracts.
+
+Logout clears localStorage.
+
+Code block:
+
+```jsx
+onClick={() => {
+  localStorage.removeItem('lexis_user');
+  setCurrentUser(null);
+  onNavigate('home');
+}}
+```
+
+
+10. LoginPage.jsx
+
+LoginPage.jsx handles login and signup.
+
+It stores email, password, name, and whether the form is signup mode.
+
+The important function is handleLogin.
+
+Code block:
+
+```jsx
+const handleLogin = async (e) => {
+  e.preventDefault();
+
+  const res = await fetch('http://localhost:5000/api/users/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+
+  const data = await res.json();
+  setCurrentUser(data);
+  localStorage.setItem('lexis_user', JSON.stringify(data));
+  onNavigate('dashboard');
+};
+```
+
+After successful login, the user is stored in localStorage and the app moves to the dashboard.
+
+
+11. DashboardPage.jsx
+
+DashboardPage.jsx shows the main analytics dashboard.
+
+It fetches contracts from the backend based on the logged-in user.
+
+Code block:
+
+```jsx
+useEffect(() => {
+  fetch(`http://localhost:5000/api/contracts?userId=${currentUser._id}&userRole=${currentUser.role}`)
+    .then(res => res.json())
+    .then(data => {
+      setContracts(data);
+      setLoading(false);
+    });
+}, []);
+```
+
+Then it calculates dashboard metrics.
+
+Code block:
+
+```jsx
+const activeCount = contracts.length;
+const pendingCount = contracts.filter(c => c.stage === 'Approval').length;
+const expiringCount = contracts.filter(c => c.urgency === 'red').length;
+```
+
+These values are shown as KPI cards.
+
+The sidebar is controlled by handleSbClick.
+
+Code block:
+
+```jsx
+const handleSbClick = (name) => {
+  if (name === 'All contracts') {
+    return onNavigate('contracts');
+  }
+  if (name === 'Team') {
+    return currentUser?.role === 'Admin'
+      ? onNavigate('admin-users')
+      : showToast('Admin access required');
+  }
+  setActiveSbItem(name);
+};
+```
+
+
+12. ContractsPage.jsx
+
+ContractsPage.jsx displays the contract table.
+
+It fetches contracts using the same role-based API.
+
+Then it filters the contracts based on the selected tab.
+
+Code block:
+
+```jsx
+const filteredContracts = activeFilter === 'All'
+  ? contracts
+  : contracts.filter(c =>
+      c.stage === activeFilter ||
+      (activeFilter === 'Expiring' && c.urgency === 'red')
+    );
+```
+
+When a contract row is clicked, the app opens the detail page.
+
+Code block:
+
+```jsx
+onNavigate('contract-detail', c._id)
+```
+
+
+13. ContractDetailPage.jsx
+
+ContractDetailPage.jsx shows one full contract.
+
+It fetches one contract by ID.
+
+Code block:
+
+```jsx
+useEffect(() => {
+  fetch(`http://localhost:5000/api/contracts/${contractId}`)
+    .then(res => res.json())
+    .then(data => {
+      setContract(data);
+      setEditForm(data);
+      setLoading(false);
+    });
+}, [contractId]);
+```
+
+This page supports multiple actions.
+
+handleApprove moves a contract to the next stage.
+
+Code block:
+
+```jsx
+const handleApprove = async () => {
+  const nextStageIndex = (contract.stageIndex || 0) + 1;
+  const stages = [...(contract.stages || [])];
+
+  if (stages[contract.stageIndex]) {
+    stages[contract.stageIndex].done = true;
+    stages[contract.stageIndex].current = false;
+  }
+
+  if (stages[nextStageIndex]) {
+    stages[nextStageIndex].current = true;
+  }
+
+  await fetch(`http://localhost:5000/api/contracts/${contractId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      stage: stages[nextStageIndex]?.name || 'Executed',
+      stageIndex: nextStageIndex,
+      stages
+    })
+  });
+};
+```
+
+handlePostComment adds a comment to the timeline.
+
+Code block:
+
+```jsx
+const handlePostComment = async () => {
+  const newEntry = {
+    text: `<b>${userRole}</b> added a comment`,
+    time: 'Just now',
+    comment: commentText
+  };
+
+  await fetch(`http://localhost:5000/api/contracts/${contractId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ $push: { timeline: newEntry } })
+  });
+};
+```
+
+The same detail page also handles reject, send back for review, resolve risk, save changes, and upload new version.
+
+
+14. NewContractPage.jsx
+
+NewContractPage.jsx handles contract creation.
+
+It has four steps: Template, Details, Clauses, and Review.
+
+The form state stores the contract details.
+
+Code block:
+
+```jsx
+const updateForm = (key, val) => {
+  setForm({ ...form, [key]: val });
+};
+```
+
+Clauses can be turned on or off.
+
+Code block:
+
+```jsx
+const toggleClause = (idx) => {
+  const updated = [...clauses];
+  updated[idx] = { ...updated[idx], on: !updated[idx].on };
+  setClauses(updated);
+};
+```
+
+File upload sends files to the backend upload API.
+
+Code block:
+
+```jsx
+const formData = new FormData();
+formData.append('file', file);
+
+await fetch('http://localhost:5000/api/contracts/upload', {
+  method: 'POST',
+  body: formData
+});
+```
+
+handleCreate builds the final contract object and saves it.
+
+Code block:
+
+```jsx
+const handleCreate = async () => {
+  const newContractData = {
+    name: form.name || 'Untitled Contract',
+    party: form.counterparty || 'Unknown Party',
+    type: form.type,
+    stage: 'Draft',
+    stageIndex: 0,
+    urgency: 'blue',
+    createdBy: currentUser._id,
+    documents: uploadedFiles,
+  };
+
+  await fetch('http://localhost:5000/api/contracts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(newContractData)
+  });
+};
+```
+
+
+15. AdminUsersPage.jsx
+
+AdminUsersPage.jsx is for user management.
+
+It fetches all users.
+
+Code block:
+
+```jsx
+const fetchUsers = async () => {
+  const res = await fetch('http://localhost:5000/api/users');
+  const data = await res.json();
+  setUsers(data);
+  setLoading(false);
+};
+```
+
+It updates user roles.
+
+Code block:
+
+```jsx
+const handleRoleChange = async (userId, newRole) => {
+  await fetch(`http://localhost:5000/api/users/${userId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role: newRole })
+  });
+};
+```
+
+It deletes users using DELETE /api/users/:id.
+
+It also invites users using POST /api/users/signup.
+
+
+16. TeamsPage.jsx
+
+TeamsPage.jsx displays team and department information.
+
+It fetches users from the backend and displays them in a member directory.
+
+Code block:
+
+```jsx
+useEffect(() => {
+  fetch('http://localhost:5000/api/users')
+    .then(res => res.json())
+    .then(data => {
+      setTeamMembers(data);
+      setLoading(false);
+    });
+}, []);
+```
+
+This page uses the users collection to show team members and their roles.
+
+
+17. HomePage.jsx and DashboardViews.jsx
+
+HomePage.jsx is the landing page.
+
+It explains the product and has buttons to navigate to the platform.
+
+It also uses IntersectionObserver for reveal animations.
+
+DashboardViews.jsx contains smaller dashboard sections: templates, counterparties, obligations, analytics, and audit log.
+
+These are mostly presentational components used inside DashboardPage.
+
+
+18. index.css
+
+index.css contains the complete frontend styling.
+
+It includes layout, dashboard cards, tables, forms, buttons, modals, contract detail page, and the Nexus CLM Elite dark theme.
+
+The theme uses black backgrounds, white text, thin borders, and status colors like red, amber, green, and blue.
+
+
+19. Final Data Flow
+
+Now I will summarize the full data flow.
+
+The user opens the React frontend.
+
+main.jsx renders App.jsx.
+
+App.jsx controls navigation and logged-in user state.
+
+LoginPage sends login requests to the Express backend.
+
+The backend checks MongoDB using the User model.
+
+After login, DashboardPage and ContractsPage fetch contracts from /api/contracts.
+
+ContractDetailPage fetches one contract from /api/contracts/:id.
+
+When a user creates, approves, edits, or comments on a contract, React sends POST or PUT requests to the backend.
+
+The backend updates MongoDB using Mongoose models.
+
+MongoDB stores users in the users collection and contracts in the contracts collection.
+
+The updated data is returned to React, and React updates the UI.
+
+
+Conclusion
+
+To conclude, Nexus CLM is a full-stack application with a React frontend, Express backend, and MongoDB database.
+
+The backend handles APIs, authentication logic, models, file upload, and seed data.
+
+The frontend handles navigation, role-based access, dashboards, contract pages, user management, forms, and styling.
+
+This completes the code explanation video.
